@@ -1,17 +1,23 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using Azure.Core;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Student.API.Dto;
+using Student.API.Exceptions;
+using Student.API.Models;
 
-// For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
 namespace Student.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class IdentityController(ApplicationDbContext applicationDbContext, IUserContext userContext) : ControllerBase
+    [Authorize]
+
+    public class IdentityController(ApplicationDbContext applicationDbContext, IUserContext userContext, UserManager<User> userManager, RoleManager<IdentityRole> roleManager) : ControllerBase
     {
         [HttpPatch("user")]
-        [Authorize]
         public async Task<IActionResult> UpdateUserDetails(UserUpdateDto userDto)
         {
             var user = userContext.GetCurrentUser();
@@ -22,6 +28,37 @@ namespace Student.API.Controllers
             }
             dbuser.DateOfBirth = userDto.DateOfBirth;
             await applicationDbContext.SaveChangesAsync();
+            return NoContent();
+        }
+
+        [HttpPost("role")]
+        public async Task<IActionResult> CreateRole(IdentityRole role)
+        {
+            await applicationDbContext.Roles.AddAsync(role);
+            await applicationDbContext.SaveChangesAsync();
+            return Ok();
+        }
+
+        [HttpPost("userRole")]
+        //[Authorize(Roles = UserRoles.Admin)]
+        public async Task<IActionResult> AssignUserRole(AssignUserRoleDto assignUserRoleDto)
+        {
+            var user = await userManager.FindByEmailAsync(assignUserRoleDto.UserEmail) ?? throw new NotFoundException(nameof(User), assignUserRoleDto.UserEmail);
+            var role = await roleManager.FindByNameAsync(assignUserRoleDto.RoleName)
+            ?? throw new NotFoundException(nameof(IdentityRole), assignUserRoleDto.RoleName);
+            await userManager.AddToRoleAsync(user, role.Name!);
+            return NoContent();
+        }
+
+        [HttpDelete("userRole")]
+        [Authorize(Roles = UserRoles.Admin)]
+        public async Task<IActionResult> UnassignUserRole(UnassignUserRoleDto unassignUserRoleDto)
+        {
+
+            var user = await userManager.FindByEmailAsync(unassignUserRoleDto.UserEmail) ?? throw new NotFoundException(nameof(User), unassignUserRoleDto.UserEmail);
+            var role = await roleManager.FindByNameAsync(unassignUserRoleDto.RoleName)
+            ?? throw new NotFoundException(nameof(IdentityRole), unassignUserRoleDto.RoleName);
+            await userManager.RemoveFromRoleAsync(user, role.Name!);
             return NoContent();
         }
     }
